@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PolyCalls — Call Tracker Dashboard</title>
+<!-- Embedded data — auto-updated by resolve_calls.py after every pipeline run -->
+<script src="data/dashboard_data.js"></script>
+<style>
+  :root {
+    /* PolyCalls brand palette */
+    --brand-blue-dark:  #1A3FBF;
+    --brand-blue:       #2B5CE6;
+    --brand-blue-mid:   #3D6FEF;
+    --brand-blue-light: #5A8AF5;
+    --brand-black:      #0A0A0F;
+    --brand-white:      #FFFFFF;
+
+    /* Surface / layout */
+    --bg:       #080B14;
+    --surface:  #0F1320;
+    --surface2: #161C2E;
+    --surface3: #1E2540;
+    --border:   #222A45;
+
+    /* Text */
+    --text:     #E8ECF8;
+    --muted:    #6B75A0;
+
+    /* Semantic */
+    --accent:   var(--brand-blue);
+    --accent-glow: rgba(43, 92, 230, 0.25);
+    --green:    #2ECC71;
+    --red:      #E74C3C;
+    --yellow:   #F39C12;
+    --purple:   #7B61FF;
+
+    --win-bg:     rgba(46, 204, 113, 0.07);
+    --loss-bg:    rgba(231, 76, 60, 0.07);
+    --pending-bg: rgba(243, 156, 18, 0.07);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  .header {
+    background: linear-gradient(135deg, #0A0F1E 0%, #0D1428 60%, #0F172A 100%);
+    border-bottom: 1px solid var(--brand-blue-dark);
+    padding: 0 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    min-height: 72px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* subtle glow behind logo */
+  .header::before {
+    content: '';
+    position: absolute;
+    left: 20px; top: 50%; transform: translateY(-50%);
+    width: 200px; height: 200px;
+    background: radial-gradient(circle, rgba(43,92,230,0.18) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    position: relative;
+    z-index: 1;
+    padding: 14px 0;
+  }
+
+  /* PolyCalls geometric logo SVG container */
+  .logo-icon {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    filter: drop-shadow(0 2px 8px rgba(43,92,230,0.5));
+  }
+
+  .header-wordmark {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .header-brand {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.3px;
+    color: var(--brand-white);
+  }
+  .header-brand span {
+    color: var(--brand-blue-light);
+  }
+  .header-tagline {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.3px;
+  }
+
+  /* Right side controls */
+  .header-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    position: relative;
+    z-index: 1;
+    padding: 14px 0;
+  }
+  .refresh-btn {
+    background: rgba(43,92,230,0.15);
+    border: 1px solid rgba(43,92,230,0.4);
+    color: var(--brand-blue-light);
+    padding: 7px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.15s;
+  }
+  .refresh-btn:hover {
+    background: rgba(43,92,230,0.3);
+    border-color: var(--brand-blue);
+    color: #fff;
+  }
+  .last-updated { font-size: 11px; color: var(--muted); }
+
+  /* ── Stats bar ── */
+  .stats-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .stat {
+    background: var(--surface);
+    padding: 18px 24px;
+    text-align: center;
+    transition: background 0.15s;
+  }
+  .stat:hover { background: var(--surface2); }
+  .stat-value {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    line-height: 1;
+  }
+  .stat-label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 4px;
+  }
+  .stat-value.green  { color: var(--green); }
+  .stat-value.red    { color: var(--red); }
+  .stat-value.yellow { color: var(--yellow); }
+  .stat-value.blue   { color: var(--brand-blue-light); }
+
+  /* ── Win rate meter ── */
+  .winrate-bar-wrap {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 32px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .winrate-label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .winrate-bar {
+    flex: 1;
+    height: 8px;
+    background: var(--surface3);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .winrate-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--brand-blue), var(--brand-blue-light));
+    transition: width 0.6s ease;
+    box-shadow: 0 0 8px rgba(43,92,230,0.6);
+  }
+  .winrate-fill.green-fill {
+    background: linear-gradient(90deg, #27ae60, var(--green));
+    box-shadow: 0 0 8px rgba(46,204,113,0.4);
+  }
+  .winrate-pct {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--brand-blue-light);
+    white-space: nowrap;
+  }
+  .winrate-detail { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+  /* ── Filters ── */
+  .filters {
+    padding: 12px 32px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+    background: var(--surface);
+  }
+  .filter-label { font-size: 12px; color: var(--muted); }
+  .filter-btn {
+    padding: 5px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.15s;
+  }
+  .filter-btn:hover { border-color: var(--brand-blue); color: var(--text); }
+  .filter-btn.active {
+    background: var(--brand-blue);
+    border-color: var(--brand-blue);
+    color: #fff;
+    box-shadow: 0 0 10px rgba(43,92,230,0.4);
+  }
+
+  /* ── Calls table ── */
+  .table-wrap { padding: 24px 32px; }
+  .section-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--muted);
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+    cursor: pointer;
+  }
+  tbody tr:hover { background: var(--surface2); }
+  tbody tr.win-row     { background: var(--win-bg); }
+  tbody tr.loss-row    { background: var(--loss-bg); }
+  tbody tr.pending-row { background: var(--pending-bg); }
+  tbody tr.win-row:hover     { background: rgba(46,204,113,0.12); }
+  tbody tr.loss-row:hover    { background: rgba(231,76,60,0.12); }
+  tbody tr.pending-row:hover { background: rgba(243,156,18,0.12); }
+
+  td { padding: 12px; vertical-align: middle; }
+
+  /* Status badge */
+  .badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+  }
+  .badge-win     { background: rgba(46,204,113,0.15); color: var(--green); border: 1px solid rgba(46,204,113,0.3); }
+  .badge-loss    { background: rgba(231,76,60,0.15); color: var(--red); border: 1px solid rgba(231,76,60,0.3); }
+  .badge-pending { background: rgba(243,156,18,0.12); color: var(--yellow); border: 1px solid rgba(243,156,18,0.3); }
+  .badge-unknown { background: rgba(107,117,160,0.12); color: var(--muted); border: 1px solid var(--border); }
+
+  /* Direction */
+  .dir-up   { color: var(--green); font-weight: 700; font-size: 13px; }
+  .dir-down { color: var(--red); font-weight: 700; font-size: 13px; }
+  .dir-yes  { color: var(--brand-blue-light); font-weight: 700; font-size: 13px; }
+  .dir-no   { color: var(--muted); font-weight: 700; font-size: 13px; }
+
+  /* Category pill */
+  .cat {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .cat-crypto    { background: rgba(43,92,230,0.15); color: var(--brand-blue-light); }
+  .cat-sports    { background: rgba(123,97,255,0.15); color: var(--purple); }
+  .cat-politics  { background: rgba(231,76,60,0.12); color: #e67e7e; }
+  .cat-economics { background: rgba(46,204,113,0.12); color: var(--green); }
+  .cat-other     { background: var(--surface2); color: var(--muted); }
+
+  .question-cell { max-width: 320px; }
+  .question-text {
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 300px;
+  }
+  .question-link { color: var(--brand-blue-light); text-decoration: none; font-size: 11px; display: inline-block; margin-top: 2px; }
+  .question-link:hover { text-decoration: underline; }
+
+  .prob-cell  { font-weight: 600; font-size: 15px; }
+  .score-cell { color: var(--muted); font-size: 13px; }
+  .date-cell  { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .model-cell { color: var(--muted); font-size: 11px; }
+  .outcome-detail { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* Empty state */
+  .empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .empty-icon { font-size: 40px; margin-bottom: 12px; }
+
+  /* Category breakdown */
+  .breakdown-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .breakdown-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    transition: border-color 0.15s;
+  }
+  .breakdown-card:hover { border-color: var(--brand-blue-dark); }
+  .breakdown-name { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .breakdown-stats { display: flex; justify-content: space-between; font-size: 12px; }
+  .breakdown-winrate { font-size: 18px; font-weight: 800; margin-top: 6px; }
+
+  /* Loading / error */
+  .loading { text-align: center; padding: 60px; color: var(--muted); font-size: 16px; }
+  .error-banner {
+    background: rgba(231,76,60,0.08);
+    border: 1px solid rgba(231,76,60,0.25);
+    color: #e67e7e;
+    padding: 12px 24px;
+    margin: 16px 32px;
+    border-radius: 8px;
+    font-size: 13px;
+  }
+
+  /* Notice */
+  .notice {
+    background: rgba(43,92,230,0.08);
+    border: 1px solid rgba(43,92,230,0.2);
+    color: var(--brand-blue-light);
+    padding: 10px 16px;
+    margin: 16px 32px 0;
+    border-radius: 8px;
+    font-size: 12px;
+  }
+
+  /* Footer */
+  .footer {
+    padding: 24px 32px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .footer-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .footer-logo { width: 28px; height: 28px; opacity: 0.7; }
+  .footer-text { font-size: 12px; color: var(--muted); }
+  .footer-disclaimer {
+    font-size: 11px;
+    color: var(--muted);
+    opacity: 0.7;
+    max-width: 500px;
+    text-align: right;
+  }
+
+  @media (max-width: 768px) {
+    .header { padding: 0 16px; }
+    .stats-bar { grid-template-columns: repeat(3, 1fr); }
+    .winrate-bar-wrap { padding: 12px 16px; }
+    .filters { padding: 10px 16px; }
+    .table-wrap { padding: 16px; }
+    thead th:nth-child(6),
+    thead th:nth-child(7),
+    tbody td:nth-child(6),
+    tbody td:nth-child(7) { display: none; }
+    .footer { padding: 16px; }
+    .footer-disclaimer { text-align: left; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════ HEADER ══════════════════ -->
+<div class="header">
+  <div class="header-left">
+    <!-- PolyCalls geometric cube "P" logo — inline SVG recreation -->
+    <svg class="logo-icon" viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg">
+      <!-- Isometric cube top face -->
+      <polygon points="50,4 92,28 50,52 8,28" fill="#4A7AF0"/>
+      <!-- Left face (dark) -->
+      <polygon points="8,28 8,72 50,96 50,52" fill="#0A0A0F"/>
+      <!-- Right face (mid blue) -->
+      <polygon points="92,28 92,52 50,76 50,52" fill="#2B5CE6"/>
+      <!-- Inner highlight / white diamond -->
+      <polygon points="50,36 66,45 50,54 34,45" fill="white" opacity="0.92"/>
+      <!-- "tail" of the P — lower right segment -->
+      <polygon points="50,76 92,52 80,82 50,96" fill="#1A3FBF"/>
+      <!-- lower left corner of tail -->
+      <polygon points="50,96 50,112 38,105 38,88" fill="#0D1428"/>
+    </svg>
+
+    <div class="header-wordmark">
+      <div class="header-brand">Poly<span>Calls</span></div>
+      <div class="header-tagline">Full audit trail · Every call · Every outcome</div>
+    </div>
+  </div>
+
+  <div class="header-right">
+    <button class="refresh-btn" onclick="loadData()">↻ Refresh</button>
+    <div class="last-updated" id="last-updated">—</div>
+  </div>
+</div>
+
+<!-- ══════════════════ STATS BAR ══════════════════ -->
+<div id="stats-bar" class="stats-bar">
+  <div class="stat"><div class="stat-value blue"   id="stat-total">—</div><div class="stat-label">Total Calls</div></div>
+  <div class="stat"><div class="stat-value green"  id="stat-wins">—</div><div class="stat-label">Wins</div></div>
+  <div class="stat"><div class="stat-value red"    id="stat-losses">—</div><div class="stat-label">Losses</div></div>
+  <div class="stat"><div class="stat-value yellow" id="stat-pending">—</div><div class="stat-label">Pending</div></div>
+  <div class="stat"><div class="stat-value green"  id="stat-winrate">—</div><div class="stat-label">Win Rate</div></div>
+  <div class="stat"><div class="stat-value blue"   id="stat-settled">—</div><div class="stat-label">Settled</div></div>
+</div>
+
+<!-- ══════════════════ WIN RATE BAR ══════════════════ -->
+<div class="winrate-bar-wrap">
+  <div class="winrate-label">Win Rate</div>
+  <div class="winrate-bar">
+    <div class="winrate-fill" id="winrate-fill" style="width:0%"></div>
+  </div>
+  <div>
+    <div class="winrate-pct" id="winrate-pct">—</div>
+    <div class="winrate-detail" id="winrate-detail">0 of 0 settled</div>
+  </div>
+</div>
+
+<!-- ══════════════════ FILTERS ══════════════════ -->
+<div class="filters">
+  <span class="filter-label">Filter:</span>
+  <button class="filter-btn active" onclick="setFilter('ALL', this)">All</button>
+  <button class="filter-btn" onclick="setFilter('WIN', this)">✓ Wins</button>
+  <button class="filter-btn" onclick="setFilter('LOSS', this)">✗ Losses</button>
+  <button class="filter-btn" onclick="setFilter('PENDING', this)">⏳ Pending</button>
+  <button class="filter-btn" onclick="setFilter('Crypto', this)">Crypto</button>
+  <button class="filter-btn" onclick="setFilter('Sports', this)">Sports</button>
+  <button class="filter-btn" onclick="setFilter('Politics', this)">Politics</button>
+</div>
+
+<div id="error-container"></div>
+<div id="notice" class="notice" style="display:none"></div>
+
+<!-- ══════════════════ TABLE ══════════════════ -->
+<div class="table-wrap">
+  <div class="section-title">All Calls</div>
+  <div id="table-container">
+    <div class="loading">Loading calls…</div>
+  </div>
+</div>
+
+<div class="table-wrap" style="padding-top:0">
+  <div class="section-title">By Category</div>
+  <div class="breakdown-grid" id="breakdown-grid"></div>
+</div>
+
+<!-- ══════════════════ FOOTER ══════════════════ -->
+<div class="footer">
+  <div class="footer-brand">
+    <svg class="footer-logo" viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg">
+      <polygon points="50,4 92,28 50,52 8,28" fill="#4A7AF0"/>
+      <polygon points="8,28 8,72 50,96 50,52" fill="#0A0A0F"/>
+      <polygon points="92,28 92,52 50,76 50,52" fill="#2B5CE6"/>
+      <polygon points="50,36 66,45 50,54 34,45" fill="white" opacity="0.92"/>
+      <polygon points="50,76 92,52 80,82 50,96" fill="#1A3FBF"/>
+      <polygon points="50,96 50,112 38,105 38,88" fill="#0D1428"/>
+    </svg>
+    <div class="footer-text">© 2025 PolyCalls · <a href="https://x.com/polycalls" target="_blank" style="color:var(--brand-blue-light);text-decoration:none">@polycalls</a></div>
+  </div>
+  <div class="footer-disclaimer">Not financial advice. For educational purposes only. Past performance does not guarantee future results.</div>
+</div>
+
+<!-- ══════════════════ SCRIPTS ══════════════════ -->
+<script>
+let allData = [];
+let currentFilter = 'ALL';
+
+async function loadData() {
+  document.getElementById('last-updated').textContent = 'Loading…';
+
+  // Option 1: dashboard_data.js injected via <script> tag
+  if (window.DASHBOARD_DATA && window.DASHBOARD_DATA.length > 0) {
+    allData = window.DASHBOARD_DATA;
+    document.getElementById('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+    document.getElementById('error-container').innerHTML = '';
+    render();
+    return;
+  }
+
+  // Option 2: fetch (http server mode)
+  try {
+    const resp = await fetch('data/calls_resolved.json?' + Date.now());
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    allData = await resp.json();
+    document.getElementById('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+    document.getElementById('error-container').innerHTML = '';
+    render();
+  } catch (e) {
+    document.getElementById('error-container').innerHTML =
+      `<div class="error-banner">
+        ⚠️ No data loaded. Run <code>python3 resolve_calls.py</code> in the project folder, then refresh.
+      </div>`;
+    document.getElementById('last-updated').textContent = 'No data';
+    render(); // render empty state
+  }
+}
+
+function setFilter(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  render();
+}
+
+function formatDate(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', {month:'short', day:'numeric'}) +
+           ' ' + d.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', hour12:false});
+  } catch { return iso.slice(0,10); }
+}
+
+function catClass(cat) {
+  const c = (cat||'').toLowerCase();
+  if (c === 'crypto')    return 'cat-crypto';
+  if (c === 'sports')    return 'cat-sports';
+  if (c === 'politics')  return 'cat-politics';
+  if (c === 'economics') return 'cat-economics';
+  return 'cat-other';
+}
+
+function dirHtml(dir) {
+  const d = (dir||'').toUpperCase();
+  if (d === 'UP')   return `<span class="dir-up">↑ UP</span>`;
+  if (d === 'DOWN') return `<span class="dir-down">↓ DOWN</span>`;
+  if (d === 'YES')  return `<span class="dir-yes">✓ YES</span>`;
+  if (d === 'NO')   return `<span class="dir-no">✗ NO</span>`;
+  return `<span class="dir-no">${d}</span>`;
+}
+
+function badgeHtml(status) {
+  const s = (status||'').toUpperCase();
+  if (s === 'WIN')     return `<span class="badge badge-win">WIN ✓</span>`;
+  if (s === 'LOSS')    return `<span class="badge badge-loss">LOSS ✗</span>`;
+  if (s === 'PENDING') return `<span class="badge badge-pending">PENDING</span>`;
+  return `<span class="badge badge-unknown">UNKNOWN</span>`;
+}
+
+function rowClass(status) {
+  const s = (status||'').toLowerCase();
+  if (s === 'win')     return 'win-row';
+  if (s === 'loss')    return 'loss-row';
+  if (s === 'pending') return 'pending-row';
+  return '';
+}
+
+function marketUrl(record) {
+  const mid = record.market_id || '';
+  if (mid.startsWith('daily_')) {
+    const q = (record.question || '').toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '')
+      .trim()
+      .replace(/\s+/g, '-')
+      .slice(0, 60);
+    return `https://polymarket.com/event/${q}`;
+  }
+  return `https://polymarket.com/markets`;
+}
+
+function render() {
+  let data = allData.filter(r => {
+    if (currentFilter === 'ALL') return true;
+    if (['WIN','LOSS','PENDING','UNKNOWN'].includes(currentFilter)) {
+      return (r.resolution_status || '').toUpperCase() === currentFilter;
+    }
+    return (r.category || '').toLowerCase() === currentFilter.toLowerCase();
+  });
+
+  const order = {WIN:0, LOSS:1, PENDING:2, UNKNOWN:3};
+  data.sort((a, b) => {
+    const so = (order[a.resolution_status] ?? 3) - (order[b.resolution_status] ?? 3);
+    if (so !== 0) return so;
+    return new Date(b.date) - new Date(a.date);
+  });
+
+  // Stats (always from full dataset)
+  const total   = allData.length;
+  const wins    = allData.filter(r => r.resolution_status === 'WIN').length;
+  const losses  = allData.filter(r => r.resolution_status === 'LOSS').length;
+  const pending = allData.filter(r => r.resolution_status === 'PENDING').length;
+  const settled = wins + losses;
+  const winrate = settled > 0 ? (wins / settled * 100) : 0;
+
+  document.getElementById('stat-total').textContent   = total;
+  document.getElementById('stat-wins').textContent    = wins;
+  document.getElementById('stat-losses').textContent  = losses;
+  document.getElementById('stat-pending').textContent = pending;
+  document.getElementById('stat-settled').textContent = settled;
+  document.getElementById('stat-winrate').textContent = settled > 0 ? winrate.toFixed(1) + '%' : '—';
+
+  document.getElementById('winrate-pct').textContent    = settled > 0 ? winrate.toFixed(1) + '%' : '—';
+  document.getElementById('winrate-detail').textContent = `${wins} of ${settled} settled`;
+  document.getElementById('winrate-fill').style.width   = Math.min(winrate, 100) + '%';
+
+  const fill = document.getElementById('winrate-fill');
+  const pct  = document.getElementById('winrate-pct');
+  if (winrate >= 60) {
+    fill.classList.add('green-fill');
+    pct.style.color = 'var(--green)';
+  } else if (winrate >= 40) {
+    fill.classList.remove('green-fill');
+    pct.style.color = 'var(--yellow)';
+  } else {
+    fill.classList.remove('green-fill');
+    pct.style.color = 'var(--red)';
+  }
+
+  // Table
+  const container = document.getElementById('table-container');
+  if (data.length === 0) {
+    container.innerHTML = `<div class="empty"><div class="empty-icon">📭</div>No calls match this filter.</div>`;
+  } else {
+    const rows = data.map(r => {
+      const yesP = r.yes_price != null ? (r.yes_price * 100).toFixed(1) + '%' : '—';
+      const rc = rowClass(r.resolution_status);
+      const outcome = r.resolved_outcome ? `<div class="outcome-detail">Settled: ${r.resolved_outcome}</div>` : '';
+      const url = marketUrl(r);
+      return `
+        <tr class="${rc}" onclick="window.open('${url}','_blank')">
+          <td>${badgeHtml(r.resolution_status)}</td>
+          <td>${dirHtml(r.called_direction)}</td>
+          <td class="question-cell">
+            <div class="question-text" title="${(r.question||'').replace(/"/g,'&quot;')}">${r.question || '—'}</div>
+            ${outcome}
+          </td>
+          <td><span class="cat ${catClass(r.category)}">${r.category || 'Other'}</span></td>
+          <td class="prob-cell">${yesP}</td>
+          <td class="score-cell">${r.edge_score != null ? r.edge_score.toFixed(0) : '—'}</td>
+          <td class="date-cell">${formatDate(r.date)}</td>
+          <td class="model-cell">${(r.model || '').replace('gemma3:12b','gemma3').replace('qwen3:4b','qwen3')}</td>
+        </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Result</th>
+            <th>Called</th>
+            <th>Market</th>
+            <th>Category</th>
+            <th>YES %</th>
+            <th>Score</th>
+            <th>Posted</th>
+            <th>Model</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  renderBreakdown();
+}
+
+function renderBreakdown() {
+  const cats = {};
+  for (const r of allData) {
+    const c = r.category || 'Other';
+    if (!cats[c]) cats[c] = {wins:0, losses:0, pending:0};
+    const s = r.resolution_status;
+    if (s === 'WIN')          cats[c].wins++;
+    else if (s === 'LOSS')    cats[c].losses++;
+    else if (s === 'PENDING') cats[c].pending++;
+  }
+
+  const cards = Object.entries(cats).map(([name, d]) => {
+    const settled = d.wins + d.losses;
+    const wr = settled > 0 ? (d.wins / settled * 100).toFixed(0) + '%' : 'N/A';
+    const total = settled + d.pending;
+    const color = settled === 0 ? 'var(--muted)'
+      : d.wins/settled >= 0.6 ? 'var(--green)'
+      : d.wins/settled >= 0.4 ? 'var(--yellow)'
+      : 'var(--red)';
+    return `
+      <div class="breakdown-card">
+        <div class="breakdown-name">${name}</div>
+        <div class="breakdown-stats">
+          <span style="color:var(--green)">${d.wins}W</span>
+          <span style="color:var(--red)">${d.losses}L</span>
+          <span style="color:var(--yellow)">${d.pending} pend</span>
+          <span style="color:var(--muted)">${total} tot</span>
+        </div>
+        <div class="breakdown-winrate" style="color:${color}">${wr}</div>
+      </div>`;
+  }).join('');
+
+  document.getElementById('breakdown-grid').innerHTML =
+    cards || '<div style="color:var(--muted)">No data yet.</div>';
+}
+
+// Auto-load on open
+loadData();
+</script>
+</body>
+</html>
